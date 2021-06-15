@@ -1,0 +1,104 @@
+---
+title: Cardiff Housing Map
+output: html_document
+---
+
+```{r, echo=FALSE, message=FALSE}
+suppressPackageStartupMessages({
+  library(leaflet)
+  library(sf)
+  library(biscale)
+  library(scales)
+})
+```
+
+```{css, echo=FALSE}
+.leaflet-tile-pane {
+  filter: grayscale(1.0);
+}
+
+.leaflet-overlay-pane {
+  mix-blend-mode: multiply;
+}
+
+
+.leaflet-overlay-pane path{
+  mix-blend-mode: multiply;
+}
+
+.leaflet{
+  width: 100vw !important; 
+  height: 100vh !important;
+  position: fixed !important; 
+  top: 0px !important; 
+  left: 0px !important;
+}
+
+```
+
+```{r, echo=FALSE, include=FALSE}
+
+cardiff_oa_boundaries <- st_read("data/cardiff_oa_boundaries.geojson") %>%
+  left_join(read_csv("data/tenure.csv")) %>%
+  left_join(read_csv("data/wimd2019_housing.csv")) %>%
+  left_join(read_csv("data/major_owners.csv")) %>%
+  filter(OA11Code != 'W00010210') # Remove island
+
+cardiff_oa_boundaries <- bi_class(cardiff_oa_boundaries, x=ProportionPrivateRented, y=ProportionSocialRented) %>%
+  rename(RentingBiClass = bi_class) %>%
+  mutate(
+    label = paste0(
+      OA11Code, "<br/>",
+      label_percent(accuracy=1, trim=FALSE)(ProportionPrivateRented), " private landlords", "<br/>",
+      label_percent(accuracy=1, trim=FALSE)(ProportionSocialRented), " social landlords", "<br/>",
+      "<hr/>",
+      label_percent(accuracy=1, trim=FALSE)(LikelihoodHousingHazard), " hazardous (estd.)", "<br/>",
+      if_else(is.na(Owners),"", paste0("<hr/>Land owners include ", "<br/>", Owners))
+    )
+  )
+
+
+RentingBiClassPal <- c(
+      "3-3" = "#3F2949", # high x, high y
+      "2-3" = "#435786",
+      "1-3" = "#4885C1", # low x, high y
+      "3-2" = "#77324C",
+      "2-2" = "#806A8A", # medium x, medium y
+      "1-2" = "#89A1C8",
+      "3-1" = "#AE3A4E", # high x, low y
+      "2-1" = "#BC7C8F",
+      "1-1" = "#CABED0" # low x, low y
+    )
+
+cardiff_oa_boundaries$RentingBiClassColour <- RentingBiClassPal[cardiff_oa_boundaries$RentingBiClass]
+
+
+LikelihoodHousingHazardPal <- colorBin("Greens", domain = cardiff_oa_boundaries$LikelihoodHousingHazard, bins = 5)
+
+
+map <- leaflet() %>%
+  addProviderTiles('CartoDB.Positron') %>%
+  addPolygons(
+    weight = 0,
+    smoothFactor = 0,
+    fillColor = ~ I(RentingBiClassColour),
+    data = cardiff_oa_boundaries,
+    label = lapply(cardiff_oa_boundaries$label, htmltools::HTML),
+    fillOpacity=0.5, group='Landlord types (Census 2011)') %>%
+  addPolygons(
+    weight = 0,
+    smoothFactor = 0,
+    fillColor = ~ LikelihoodHousingHazardPal(LikelihoodHousingHazard),
+    data = cardiff_oa_boundaries,
+    label = lapply(cardiff_oa_boundaries$label, htmltools::HTML),
+    fillOpacity=0.5, group='Hazardous housing (estd. 2019)') %>%
+  addLayersControl(
+    baseGroups = c('Landlord types (Census 2011)', 'Hazardous housing (estd. 2019)'),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+```
+
+```{r, echo=FALSE}
+map
+```
