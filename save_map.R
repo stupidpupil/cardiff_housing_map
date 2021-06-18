@@ -1,1 +1,1 @@
-rmarkdown::render("map.Rmd", "all", "public/map.html")
+rmarkdown::render("map.Rmd", "all", "index.html")

@@ -34,6 +34,10 @@ suppressPackageStartupMessages({
   left: 0px !important;
 }
 
+.leaflet-tooltip hr{
+  margin: 0.5em 0;
+}
+
 ```
 
 ```{r, echo=FALSE, include=FALSE}
@@ -42,6 +46,8 @@ cardiff_oa_boundaries <- st_read("data/cardiff_oa_boundaries.geojson") %>%
   left_join(read_csv("data/tenure.csv")) %>%
   left_join(read_csv("data/wimd2019_housing.csv")) %>%
   left_join(read_csv("data/major_owners.csv")) %>%
+  left_join(read_csv("data/hmo_count.csv")) %>%
+  replace_na(list(CountOfHMOs = 0)) %>%
   filter(OA11Code != 'W00010210') # Remove island
 
 cardiff_oa_boundaries <- bi_class(cardiff_oa_boundaries, x=ProportionPrivateRented, y=ProportionSocialRented) %>%
@@ -50,10 +56,14 @@ cardiff_oa_boundaries <- bi_class(cardiff_oa_boundaries, x=ProportionPrivateRent
     label = paste0(
       OA11Code, "<br/>",
       label_percent(accuracy=1, trim=FALSE)(ProportionPrivateRented), " private landlords", "<br/>",
-      label_percent(accuracy=1, trim=FALSE)(ProportionSocialRented), " social landlords", "<br/>",
+      label_percent(accuracy=1, trim=FALSE)(ProportionSocialRented), " social landlords",
       "<hr/>",
-      label_percent(accuracy=1, trim=FALSE)(LikelihoodHousingHazard), " hazardous (estd.)", "<br/>",
-      if_else(is.na(Owners),"", paste0("<hr/>Land owners include ", "<br/>", Owners))
+      label_percent(accuracy=1, trim=FALSE)(LikelihoodHousingHazard), " hazardous (estd.)",
+      if_else(is.na(Owners),"", paste0("<hr/>Land owners include ", "<br/>", Owners)),
+
+      "<hr/>",
+      CountOfHMOs, " HMOs",
+      if_else(CountOfHMOs > 0, paste0("<br/>HMO managers include ", "<br/>", HMOManagers), "")
     )
   )
 
@@ -75,6 +85,7 @@ cardiff_oa_boundaries$RentingBiClassColour <- RentingBiClassPal[cardiff_oa_bound
 
 LikelihoodHousingHazardPal <- colorBin("Greens", domain = cardiff_oa_boundaries$LikelihoodHousingHazard, bins = 5)
 
+HMOCountPal <- colorBin("Oranges", domain = cardiff_oa_boundaries$CountOfHMOs, bins = c(0, 1, 5, 10, Inf))
 
 map <- leaflet() %>%
   addProviderTiles('CartoDB.Positron') %>%
@@ -92,8 +103,15 @@ map <- leaflet() %>%
     data = cardiff_oa_boundaries,
     label = lapply(cardiff_oa_boundaries$label, htmltools::HTML),
     fillOpacity=0.5, group='Hazardous housing (estd. 2019)') %>%
+  addPolygons(
+    weight = 0,
+    smoothFactor = 0,
+    fillColor = ~ HMOCountPal(CountOfHMOs),
+    data = cardiff_oa_boundaries,
+    label = lapply(cardiff_oa_boundaries$label, htmltools::HTML),
+    fillOpacity=0.5, group='HMOs (2017)') %>%
   addLayersControl(
-    baseGroups = c('Landlord types (Census 2011)', 'Hazardous housing (estd. 2019)'),
+    baseGroups = c('Landlord types (Census 2011)', 'Hazardous housing (estd. 2019)', 'HMOs (2017)'),
     options = layersControlOptions(collapsed = FALSE)
   )
 
